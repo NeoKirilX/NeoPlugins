@@ -24,7 +24,7 @@ static const char* TAG = "MathTab";
 
 static const PluginMetadata s_metadata = {
     "MathTab",
-    "1.2.1",
+    "1.2.2",
     "@NeoKirilX & @NeoPlugins",
     "Вычисляет математику, уравнения, цепочки (2+2=4-3=1), координаты и векторы (dist, mid, hypot, len, dot). По Tab вставляется =ответ, по Alt+Tab вставляется замена примера на ответ. Прозрачная подсказка и предпросмотр по Alt."
 };
@@ -1246,7 +1246,12 @@ static jboolean JNICALL native_on_key_event(JNIEnv* env, jclass, jobject e) {
     bool is_replace = (isAlt == JNI_TRUE) || (isShift == JNI_TRUE);
 
     std::lock_guard<std::mutex> lock(g_state_mutex);
-    if (!g_active_draft || !g_active_on_change) return JNI_FALSE;
+    if (!g_active_draft || !g_active_on_change) {
+        if (g_api) {
+            g_api->log_info(TAG, "Tab pressed but active draft/on_change not captured yet.");
+        }
+        return JNI_FALSE;
+    }
 
     jobject tfv = env->CallObjectMethod(g_active_draft, g_cache.mid_draft_get_value);
     if (!tfv) return JNI_FALSE;
@@ -1497,6 +1502,13 @@ static void before_visual_transform(HookParam* param) {
     param->result = (void*)(uintptr_t)handle;
     param->return_early = 1;
     param->has_result = 1;
+
+    static std::atomic<int> ghost_count{0};
+    if (g_api && ghost_count.fetch_add(1) < 10) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Ghost preview displayed: %s -> %s", candidate.c_str(), solution.c_str());
+        g_api->log_info(TAG, buf);
+    }
 }
 
 static void before_message_input_bar(HookParam* param) {
@@ -1523,13 +1535,18 @@ static void before_message_input_bar(HookParam* param) {
     }
     g_active_draft = env->NewGlobalRef(draft);
     g_active_on_change = env->NewGlobalRef(on_change);
+
+    static std::atomic<bool> logged{false};
+    if (g_api && !logged.exchange(true)) {
+        g_api->log_info(TAG, "Active ComposerDraft and onDraftChange hooked successfully.");
+    }
 }
 
 extern "C" PLUGIN_EXPORT bool mandagram_plugin_init(const PluginApi* api) {
     if (!api) return false;
     g_api = api;
 
-    g_api->log_info(TAG, "Initializing MathTab v1.2.1...");
+    g_api->log_info(TAG, "Initializing MathTab v1.2.2...");
 
     JNIEnv* env = get_jni_env();
     if (env) {
@@ -1617,7 +1634,7 @@ extern "C" PLUGIN_EXPORT bool mandagram_plugin_init(const PluginApi* api) {
     int32_t hook_res = g_api->register_hook(
         "com.mandagram.ui.chat.MessageComposerKt",
         "MessageInputBar",
-        "(Lcom/mandagram/ui/chat/ComposerDraft;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;ZLkotlin/jvm/functions/Function0;Landroidx/compose/ui/focus/FocusRequester;ZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;III)V",
+        nullptr,
         before_message_input_bar,
         nullptr
     );
@@ -1628,20 +1645,28 @@ extern "C" PLUGIN_EXPORT bool mandagram_plugin_init(const PluginApi* api) {
         g_api->log_error(TAG, "Failed to hook MessageComposerKt.MessageInputBar");
     }
 
-    int32_t trans_res = g_api->register_hook(
-        "com.mandagram.ui.chat.MessageComposerKt$MessageInputBar$3$1$2$1",
+    int32_t trans_res4 = g_api->register_hook(
+        "com.mandagram.ui.chat.MessageComposerKt$MessageInputBar$4$1$2$1",
         "invoke$lambda$1$lambda$0",
-        "(Lcom/mandagram/ui/chat/ComposerDraft;JLandroidx/compose/ui/text/AnnotatedString;)Landroidx/compose/ui/text/input/TransformedText;",
+        nullptr,
         before_visual_transform,
         nullptr
     );
 
-    if (trans_res == 0) {
+    int32_t trans_res3 = g_api->register_hook(
+        "com.mandagram.ui.chat.MessageComposerKt$MessageInputBar$3$1$2$1",
+        "invoke$lambda$1$lambda$0",
+        nullptr,
+        before_visual_transform,
+        nullptr
+    );
+
+    if (trans_res4 == 0 || trans_res3 == 0) {
         g_api->log_info(TAG, "Successfully hooked VisualTransformation for ghost preview");
     } else {
         g_api->log_error(TAG, "Failed to hook VisualTransformation for ghost preview");
     }
 
-    g_api->log_info(TAG, "MathTab v1.2.1 initialized successfully.");
+    g_api->log_info(TAG, "MathTab v1.2.2 initialized successfully.");
     return true;
 }
