@@ -2,8 +2,8 @@ CXX = g++
 CXX_WIN = x86_64-w64-mingw32-g++
 CXXFLAGS = -std=c++17 -O2 -Wall -I. -I/usr/lib/jvm/java-25-openjdk/include -I/usr/lib/jvm/java-25-openjdk/include/linux
 
-TARGET_SO = Customoji.so
-TARGET_DLL = Customoji.dll
+TARGET_SO = exmoji.so
+TARGET_DLL = exmoji.dll
 
 SRC = custom_emoji_plugin.cpp
 HEADER = mandagram_plugin.h

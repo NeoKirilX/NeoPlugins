@@ -17,13 +17,13 @@
 
 #include <jni.h>
 
-static const char* TAG = "Customoji";
+static const char* TAG = "exmoji";
 
 static const PluginMetadata s_metadata = {
-    "Customoji",
+    "exmoji",
     "1.0.0",
     "@NeoKirilX & @NeoPlugins",
-    "converts tg://emoji?id= patterns into telegram premium custom emojis"
+    "НЕ ЭКСТЕРА ЭМОДЗИ А ЭМОДЗИ БЫВШЕГО"
 };
 
 extern "C" PLUGIN_EXPORT const PluginMetadata* mandagram_plugin_metadata(void) {
@@ -533,7 +533,7 @@ extern "C" PLUGIN_EXPORT bool mandagram_plugin_init(const PluginApi* api) {
     if (!api) return false;
     g_api = api;
     
-    g_api->log_info(TAG, "Initializing Customoji v1.0.0...");
+    g_api->log_info(TAG, "Initializing exmoji v1.0.0...");
     
     JNIEnv* env = get_jni_env();
     if (env) {
@@ -575,6 +575,6 @@ extern "C" PLUGIN_EXPORT bool mandagram_plugin_init(const PluginApi* api) {
         g_api->log_error(TAG, "Failed to register message send hook");
     }
     
-    g_api->log_info(TAG, "Customoji initialized successfully.");
+    g_api->log_info(TAG, "exmoji initialized successfully.");
     return true;
 }
