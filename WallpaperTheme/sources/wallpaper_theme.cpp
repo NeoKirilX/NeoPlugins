@@ -10,6 +10,7 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <condition_variable>
 #include <fstream>
 #include <sys/stat.h>
 
@@ -39,6 +40,9 @@ static const PluginApi* g_api = nullptr;
 static jobject g_class_loader = nullptr;
 static std::mutex g_loader_mutex;
 static std::atomic<bool> g_running{false};
+static std::thread g_watcher_thread;
+static std::condition_variable g_cv;
+static std::mutex g_cv_mutex;
 
 #if defined(_WIN32)
 typedef jint (JNICALL *GetCreatedJavaVMs_t)(JavaVM**, jsize, jsize*);
@@ -583,8 +587,9 @@ static void watcher_loop() {
     std::string last_path;
     time_t last_mtime = 0;
     while (g_running.load()) {
-        for (int i = 0; i < 25 && g_running.load(); ++i) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        {
+            std::unique_lock<std::mutex> lk(g_cv_mutex);
+            g_cv.wait_for(lk, std::chrono::seconds(2), [] { return !g_running.load(); });
         }
         if (!g_running.load()) break;
         std::string cur_path = detect_wallpaper();
@@ -664,8 +669,7 @@ extern "C" PLUGIN_EXPORT bool mandagram_plugin_init(const PluginApi* api) {
     g_api->register_chat_action("monet_amoled", "переключить amoled фон", on_toggle_amoled_action, nullptr);
 
     g_running.store(true);
-    std::thread t(watcher_loop);
-    t.detach();
+    g_watcher_thread = std::thread(watcher_loop);
 
     if (attached) detach_jni_env();
 
@@ -673,17 +677,25 @@ extern "C" PLUGIN_EXPORT bool mandagram_plugin_init(const PluginApi* api) {
     return true;
 }
 
+static void stop_watcher() {
+    g_running.store(false);
+    g_cv.notify_all();
+    if (g_watcher_thread.joinable()) {
+        g_watcher_thread.join();
+    }
+}
+
 #if defined(_WIN32)
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
     (void)hinstDLL;
     (void)lpReserved;
     if (fdwReason == DLL_PROCESS_DETACH) {
-        g_running.store(false);
+        stop_watcher();
     }
     return TRUE;
 }
 #else
-__attribute__((destructor)) static void monet_wallpaper_on_unload() {
-    g_running.store(false);
+__attribute__((destructor)) static void wallpaper_theme_on_unload() {
+    stop_watcher();
 }
 #endif
