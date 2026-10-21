@@ -443,6 +443,12 @@ static std::string detect_wallpaper() {
     std::string default_bg = home + "/.wallpaper";
     if (file_exists(default_bg)) return default_bg;
 
+    std::string qs_color = home + "/.local/state/quickshell/user/generated/color.txt";
+    if (file_exists(qs_color)) return qs_color;
+
+    std::string wal_colors = home + "/.cache/wal/colors";
+    if (file_exists(wal_colors)) return wal_colors;
+
     return "";
 #endif
 }
@@ -586,19 +592,60 @@ static void on_toggle_amoled_action(int64_t chat_id, void* user_data) {
 static void watcher_loop() {
     std::string last_path;
     time_t last_mtime = 0;
+
+#if !defined(_WIN32)
+    time_t last_qs_mtime = 0;
+    time_t last_col_mtime = 0;
+    time_t last_cfg_mtime = 0;
+    const char* home_env = getenv("HOME");
+    std::string home = home_env ? home_env : "";
+    std::string qs_path_file = home + "/.local/state/quickshell/user/generated/wallpaper/path.txt";
+    std::string qs_col_file = home + "/.local/state/quickshell/user/generated/color.txt";
+    std::string ii_cfg_file = home + "/.config/illogical-impulse/config.json";
+#endif
+
     while (g_running.load()) {
         {
             std::unique_lock<std::mutex> lk(g_cv_mutex);
             g_cv.wait_for(lk, std::chrono::seconds(2), [] { return !g_running.load(); });
         }
         if (!g_running.load()) break;
+
+        bool changed = false;
+
+#if !defined(_WIN32)
+        struct stat st_qs;
+        if (stat(qs_path_file.c_str(), &st_qs) == 0 && st_qs.st_mtime != last_qs_mtime) {
+            last_qs_mtime = st_qs.st_mtime;
+            changed = true;
+        }
+
+        struct stat st_col;
+        if (stat(qs_col_file.c_str(), &st_col) == 0 && st_col.st_mtime != last_col_mtime) {
+            last_col_mtime = st_col.st_mtime;
+            changed = true;
+        }
+
+        struct stat st_cfg;
+        if (stat(ii_cfg_file.c_str(), &st_cfg) == 0 && st_cfg.st_mtime != last_cfg_mtime) {
+            last_cfg_mtime = st_cfg.st_mtime;
+            changed = true;
+        }
+#endif
+
         std::string cur_path = detect_wallpaper();
-        if (cur_path.empty()) continue;
-        struct stat st;
-        if (stat(cur_path.c_str(), &st) != 0) continue;
-        if (cur_path != last_path || st.st_mtime != last_mtime) {
-            last_path = cur_path;
-            last_mtime = st.st_mtime;
+        if (!cur_path.empty()) {
+            struct stat st;
+            if (stat(cur_path.c_str(), &st) == 0) {
+                if (cur_path != last_path || st.st_mtime != last_mtime) {
+                    last_path = cur_path;
+                    last_mtime = st.st_mtime;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
             sync_wallpaper_theme();
         }
     }
