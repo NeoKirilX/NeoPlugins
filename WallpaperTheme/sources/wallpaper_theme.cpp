@@ -193,6 +193,42 @@ static std::string detect_wallpaper() {
             if (file_exists(res)) return res;
         }
     }
+
+    char appdata[MAX_PATH];
+    if (GetEnvironmentVariableA("APPDATA", appdata, sizeof(appdata)) > 0) {
+        std::string tw = std::string(appdata) + "\\Microsoft\\Windows\\Themes\\TranscodedWallpaper";
+        if (file_exists(tw)) return tw;
+    }
+
+    HKEY hKey = nullptr;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Control Panel\\Desktop", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        char regBuf[MAX_PATH * 2] = {0};
+        DWORD bufSize = sizeof(regBuf);
+        if (RegQueryValueExA(hKey, "Wallpaper", nullptr, nullptr, (LPBYTE)regBuf, &bufSize) == ERROR_SUCCESS) {
+            std::string p(regBuf);
+            if (file_exists(p)) {
+                RegCloseKey(hKey);
+                return p;
+            }
+        }
+        RegCloseKey(hKey);
+    }
+
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Control Panel\\Colors", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        char colorBuf[64] = {0};
+        DWORD colorSize = sizeof(colorBuf);
+        if (RegQueryValueExA(hKey, "Background", nullptr, nullptr, (LPBYTE)colorBuf, &colorSize) == ERROR_SUCCESS) {
+            int r = 0, g = 0, b = 0;
+            if (sscanf(colorBuf, "%d %d %d", &r, &g, &b) == 3) {
+                char hex[16];
+                snprintf(hex, sizeof(hex), "#%02X%02X%02X", r, g, b);
+                RegCloseKey(hKey);
+                return std::string(hex);
+            }
+        }
+        RegCloseKey(hKey);
+    }
+
     return "";
 #else
     const char* home_env = getenv("HOME");
